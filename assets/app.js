@@ -76,7 +76,7 @@ async function startCamera(opts = {}) {
     $('btn-upload-label').classList.add('btn--primary');
     return;
   }
-  busy(true, '開啟相機');
+  if (!quiet) busy(true, '開啟相機');
   try {
     /* 老 iPad：先試 1280×960；失敗就退回最寬鬆的條件 */
     let stream;
@@ -726,6 +726,9 @@ function snow() {
   /* iPad Safari 一定要用戶手勢才開相機，唔好自動試 */
   /* 桌機靜靜試一次；失敗就留住「按一下，開啟相機」的狀態，唔彈錯誤 */
   if (!isIOS && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    startCamera({ quiet: true }).catch(() => {});
+    Promise.race([
+      startCamera({ quiet: true }),
+      new Promise((r) => setTimeout(r, 8000))
+    ]).catch(() => {}).finally(() => busy(false));
   }
 })();
