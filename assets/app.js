@@ -34,11 +34,42 @@ const S = {
   shot: null,            // 拍下／載入的原始 canvas（3:2 已裁）
   filter: 'none',
   frame: 'gold',
+  ai: null,              // AI 生成的底圖（已裁成 3:2）
+  aiStyle: null,         // 'bethlehem' | 'candlelight' | 'storybook'
+  aiBusy: false,
   stickers: [],
   selected: null,
   drag: null,
   pinch: null
 };
+
+/* ============================================================
+   AI 場景轉換
+   ------------------------------------------------------------
+   AI_ENDPOINT 留空時，整個 AI 模式自動隱藏，只留本機光線濾鏡。
+   接上 Worker 之後填一個網址即可，例如：
+     AI_ENDPOINT = 'https://your-worker.workers.dev/ai'
+   約定格式：POST { image: dataURL, style: 'bethlehem' } → { image: dataURL }
+   失敗時（超時、4xx/5xx、格式錯）一律退回本機濾鏡，唔會阻住訪客。
+   ============================================================ */
+let AI_ENDPOINT = '';            // ← 之後填 Worker 網址（可由 console 覆寫作測試）
+const AI_TIMEOUT_MS = 20000;     // AI 太慢就放棄，唔好令訪客等
+
+/* AI 場景：每款同時綁定一個本機濾鏡做後備，所以無 AI 都一定有成品 */
+const AI_STYLES = [
+  { id: 'bethlehem', name: '伯利恆夜色', sub: '星空・暖燈',
+    hint: '讓夜空與星光落在相片四周，人物保留清楚。',
+    prompt: 'deep blue night sky with a large glowing star, warm candlelight glow at the edges, soft falling snow, painterly, reverent, no people, no text',
+    fallback: 'candle' },
+  { id: 'candlelight', name: '馬槽燭光', sub: '金暖・柔焦',
+    hint: '暖金燭光籠罩，適合大合照。',
+    prompt: 'warm golden candlelight glow, soft bokeh, straw and wood tones, gentle haze, painterly, reverent, no people, no text',
+    fallback: 'warm' },
+  { id: 'storybook', name: '繪本福音', sub: '水彩・柔筆',
+    hint: '水彩插畫感，適合小朋友。',
+    prompt: 'soft watercolour illustration, muted ivory and sage palette, gentle paper texture, storybook children bible illustration style, no people, no text',
+    fallback: 'soft' }
+];
 
 /* ── DOM ──────────────────────────────────────────────── */
 const $ = (id) => document.getElementById(id);
@@ -215,6 +246,13 @@ function loadImage(file) {
    二、相紙同顏色
    ══════════════════════════════════════════════════════ */
 
+function syncFilterChips() {
+  const cf = $('chips-filter');
+  if (!cf) return;
+  [...cf.children].forEach((c, i) =>
+    c.setAttribute('aria-pressed', String(FILTERS[i].id === S.filter)));
+}
+
 function buildChips() {
   const cf = $('chips-filter');
   cf.innerHTML = '';
@@ -226,6 +264,7 @@ function buildChips() {
     b.textContent = f.name;
     b.addEventListener('click', () => {
       S.filter = f.id;
+      if (S.ai) { S.ai = null; S.aiStyle = null; }   /* 手動揀光線即取消 AI */
       [...cf.children].forEach((c) => c.setAttribute('aria-pressed', 'false'));
       b.setAttribute('aria-pressed', 'true');
       drawPreview();
@@ -259,6 +298,127 @@ function drawPreview() {
 }
 
 /* ══════════════════════════════════════════════════════
+   AI 場景：呼叫 → 混合 → 失敗即退回本機濾鏡
+   ══════════════════════════════════════════════════════ */
+
+/* 送出去之前先縮細：老 iPad 上載 1600×1067 太肥 */
+function aiInputDataURL(maxW = 900) {
+  const src = S.shot;
+  if (!src) return null;
+  if (src.width <= maxW) return src.toDataURL('image/jpeg', 0.86);
+  const k = maxW / src.width;
+  const c = document.createElement('canvas');
+  c.width = maxW; c.height = Math.round(src.height * k);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.86);
+}
+
+async function runAI(styleId) {
+  const style = AI_STYLES.find((s) => s.id === styleId);
+  if (!style || S.aiBusy) return;
+  if (!S.shot) { toast('先影一張相'); return; }
+
+  /* 未接 API：即刻用本機後備，並老實講清楚 */
+  if (!AI_ENDPOINT) {
+    applyAIFallback(style, '未接上 AI 服務，先用本機光線');
+    return;
+  }
+
+  S.aiBusy = true;
+  showAIOverlay(true, '正在生成' + style.name);
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: aiInputDataURL(), style: style.id, prompt: style.prompt }),
+      signal: ac.signal
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data || typeof data.image !== 'string' || !data.image.startsWith('data:image'))
+      throw new Error('bad payload');
+
+    const img = await loadImageSrc(data.image);
+    S.ai = img;
+    S.aiStyle = style.id;
+    showAIOverlay(false);
+    drawPreview();
+    toast('已加上「' + style.name + '」');
+  } catch (err) {
+    /* 超時、網絡、格式錯 —— 一律退回，唔彈錯誤俾訪客睇 */
+    console.warn('[AI]', err && err.message);
+    showAIOverlay(false);
+    applyAIFallback(style, 'AI 暫時未能連上，已用本機光線');
+  } finally {
+    clearTimeout(timer);
+    S.aiBusy = false;
+  }
+}
+
+/* 無 AI 時：用該場景對應的本機濾鏡，成品照樣出得 */
+function applyAIFallback(style, msg) {
+  S.ai = null;
+  S.aiStyle = null;
+  S.filter = style.fallback;
+  syncFilterChips();
+  drawPreview();
+  toast(msg, '⚡');
+}
+
+function loadImageSrc(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('decode'));
+    img.src = src;
+  });
+}
+
+function showAIOverlay(on, text) {
+  let el = $('ai-overlay');
+  if (!el) return;
+  if (text) el.querySelector('.ai-overlay-text').textContent = text;
+  el.hidden = !on;
+}
+
+function clearAI() {
+  S.ai = null;
+  S.aiStyle = null;
+  drawPreview();
+}
+
+function buildAIPanel() {
+  const wrap = $('ai-panel');
+  if (!wrap) return;
+  /* 未接 API 都要顯示：訪客照樣有場景可按，只是走後備 */
+  const grid = $('ai-grid');
+  grid.innerHTML = '';
+  AI_STYLES.forEach((s) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip chip--ai';
+    b.setAttribute('aria-pressed', String(S.aiStyle === s.id));
+    b.innerHTML = `<span class="chip-ai-name">${s.name}</span><span class="chip-ai-sub">${s.sub}</span>`;
+    b.addEventListener('click', () => {
+      [...grid.children].forEach((c) => c.setAttribute('aria-pressed', 'false'));
+      b.setAttribute('aria-pressed', 'true');
+      runAI(s.id);
+    });
+    grid.appendChild(b);
+  });
+
+  const note = $('ai-note');
+  if (note) {
+    note.textContent = AI_ENDPOINT
+      ? '生成需時，失敗會自動改用本機光線。'
+      : '暫用本機光線模擬場景，效果即時。';
+  }
+}
+
+/* ══════════════════════════════════════════════════════
    三、繪卡（預覽同輸出共用）
    ══════════════════════════════════════════════════════ */
 
@@ -273,6 +433,26 @@ function paintCard(g, W, H, opts = {}) {
   if (S.shot) g.drawImage(S.shot, 0, 0, W, H);
   else { g.fillStyle = '#0d1f18'; g.fillRect(0, 0, W, H); }
   g.restore();
+
+  /* 1b. AI 場景：疊在相片上，人物保留，只換四周氣氛 */
+  if (S.ai) {
+    g.save();
+    /* 先柔化相片邊緣，令 AI 底圖自然貼住 */
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha = 0.55;
+    g.drawImage(S.ai, 0, 0, W, H);
+    g.restore();
+
+    /* 四周暗角，把人留下、把畫面收邊 */
+    g.save();
+    const vg = g.createRadialGradient(W / 2, H * 0.52, Math.min(W, H) * 0.28,
+                                      W / 2, H * 0.52, Math.max(W, H) * 0.72);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(10,22,17,0.46)');
+    g.fillStyle = vg;
+    g.fillRect(0, 0, W, H);
+    g.restore();
+  }
 
   /* 2. 淡暖色罩（令相片同紙邊同一家族） */
   g.save();
@@ -655,6 +835,7 @@ function goStage(name) {
 async function goPaper() {
   await ensureFonts();
   buildChips();
+  buildAIPanel();
   drawPreview();
   goStage('paper');
 }

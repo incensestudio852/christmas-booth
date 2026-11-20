@@ -223,6 +223,38 @@ main{position:relative;z-index:2;padding-bottom:40px}
   box-shadow:inset 0 0 0 1px rgba(0,0,0,.25);
 }
 
+/* AI 場景卡 */
+.chips--ai{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.chip--ai{
+  flex-direction:column;align-items:flex-start;gap:2px;
+  min-height:58px;padding:11px 15px;border-radius:10px;
+  border-color:rgba(251,246,236,.16);
+}
+.chip--ai[aria-pressed="true"]{
+  border-color:var(--brass);background:rgba(185,138,62,.18);
+}
+.chip-ai-name{font-size:13px;font-weight:500;letter-spacing:.03em}
+.chip-ai-sub{font-size:10px;letter-spacing:.06em;color:rgba(251,246,236,.44)}
+.ai-note{
+  margin:9px 0 0;font-size:11px;line-height:1.6;
+  color:rgba(251,246,236,.42);
+}
+
+/* 生成中遮罩 */
+.ai-overlay{
+  position:absolute;inset:0;z-index:5;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  background:rgba(11,26,21,.82);backdrop-filter:blur(3px);
+  border-radius:var(--r);
+}
+.ai-overlay-ring{
+  width:30px;height:30px;border-radius:50%;
+  border:2px solid rgba(185,138,62,.3);border-top-color:var(--brass);
+  animation:spin .9s linear infinite;
+}
+.ai-overlay-text{font-size:12px;letter-spacing:.1em;color:var(--ivory)}
+.paper-viewer{position:relative}
+
 /* ── sticker stage ─────────────────────────────────────── */
 .edit-layout{
   display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,.8fr);
@@ -337,6 +369,7 @@ main{position:relative;z-index:2;padding-bottom:40px}
 }
 @media (max-width:560px){
   .topbar-note{display:none}
+  .chips--ai{grid-template-columns:1fr}
   .capture-actions .btn,.stage-actions .btn{flex:1 1 100%}
   .tray-grid{grid-template-columns:repeat(4,1fr)}
   .display{font-size:clamp(32px,9vw,44px)}
