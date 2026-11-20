@@ -71,11 +71,24 @@ button{font:inherit;color:inherit}
   font-size:10px;letter-spacing:.22em;text-transform:uppercase;
   color:var(--brass-lit);margin-top:2px;
 }
+.topbar-right{display:flex;align-items:center;gap:12px}
 .topbar-note{
   font-size:11px;letter-spacing:.14em;color:rgba(251,246,236,.5);
   border:1px solid rgba(251,246,236,.16);border-radius:100px;
   padding:5px 12px;white-space:nowrap;
 }
+/* 餘額：只有一個小圓點同數字，標籤藏在 aria-label 裡 */
+.credit{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10px;letter-spacing:.1em;
+  color:rgba(251,246,236,.34);font-variant-numeric:tabular-nums;
+  cursor:default;
+}
+.credit-dot{
+  width:5px;height:5px;border-radius:50%;
+  background:rgba(185,138,62,.55);
+}
+.credit-num{opacity:.85}
 
 /* ── stages ────────────────────────────────────────────── */
 main{position:relative;z-index:2;padding-bottom:40px}

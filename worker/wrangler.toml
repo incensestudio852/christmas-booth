@@ -1,0 +1,8 @@
+name = "bethlehem-ai"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# 底圖快取：生成一次，之後所有訪客共用，唔會再扣 credit
+[[kv_namespaces]]
+binding = "SCENES"
+id = "cdb842eeec0b46a3a63f18f733bbcd81"

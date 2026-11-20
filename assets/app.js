@@ -16,7 +16,9 @@ const FILTERS = [
   { id: 'warm',  name: '暖冬',       css: 'sepia(.16) saturate(1.18) brightness(1.04) contrast(1.03)' },
   { id: 'candle',name: '燭光',       css: 'sepia(.3) saturate(1.25) brightness(.97) contrast(1.08)' },
   { id: 'soft',  name: '繪本柔光',   css: 'saturate(.92) brightness(1.08) contrast(.94)' },
-  { id: 'ivory', name: '象牙',       css: 'grayscale(.35) sepia(.28) saturate(1.1) brightness(1.06)' }
+  { id: 'ivory', name: '象牙',       css: 'grayscale(.35) sepia(.28) saturate(1.1) brightness(1.06)' },
+  { id: 'shinkai', name: '動畫光影', css: 'saturate(1.45) contrast(1.12) brightness(1.06) hue-rotate(-4deg)' },
+  { id: 'comic',   name: '美漫',     css: 'saturate(1.6) contrast(1.35) brightness(1.02)' }
 ];
 
 /* 相紙：以 canvas 繪製，輸出時一併重畫 */
@@ -52,23 +54,19 @@ const S = {
    約定格式：POST { image: dataURL, style: 'bethlehem' } → { image: dataURL }
    失敗時（超時、4xx/5xx、格式錯）一律退回本機濾鏡，唔會阻住訪客。
    ============================================================ */
-let AI_ENDPOINT = '';            // ← 之後填 Worker 網址（可由 console 覆寫作測試）
+let AI_ENDPOINT = 'https://bethlehem-ai.incensestudio852.workers.dev';
 const AI_TIMEOUT_MS = 20000;     // AI 太慢就放棄，唔好令訪客等
 
-/* AI 場景：每款同時綁定一個本機濾鏡做後備，所以無 AI 都一定有成品 */
+/* AI 風格：把「這張相」變成另一種畫風，人物保留。
+   每個風格都有本機後備（CSS 濾鏡近似），所以無網絡都出得成相。 */
 const AI_STYLES = [
-  { id: 'bethlehem', name: '伯利恆夜色', sub: '星空・暖燈',
-    hint: '讓夜空與星光落在相片四周，人物保留清楚。',
-    prompt: 'deep blue night sky with a large glowing star, warm candlelight glow at the edges, soft falling snow, painterly, reverent, no people, no text',
-    fallback: 'candle' },
-  { id: 'candlelight', name: '馬槽燭光', sub: '金暖・柔焦',
-    hint: '暖金燭光籠罩，適合大合照。',
-    prompt: 'warm golden candlelight glow, soft bokeh, straw and wood tones, gentle haze, painterly, reverent, no people, no text',
-    fallback: 'warm' },
-  { id: 'storybook', name: '繪本福音', sub: '水彩・柔筆',
-    hint: '水彩插畫感，適合小朋友。',
-    prompt: 'soft watercolour illustration, muted ivory and sage palette, gentle paper texture, storybook children bible illustration style, no people, no text',
-    fallback: 'soft' }
+  { id: 'shinkai',   name: '新海誠', sub: '動畫光影', fallback: 'shinkai' },
+  { id: 'storybook', name: '繪本水彩', sub: '柔和水彩',
+    fallback: 'soft' },
+  { id: 'ivory',     name: '象牙攝影', sub: '暖灰人像',
+    fallback: 'ivory' },
+  { id: 'comic',     name: '英雄漫畫', sub: '美漫網點',
+    fallback: 'comic' }
 ];
 
 /* ── DOM ──────────────────────────────────────────────── */
@@ -318,47 +316,67 @@ async function runAI(styleId) {
   if (!style || S.aiBusy) return;
   if (!S.shot) { toast('先影一張相'); return; }
 
-  /* 未接 API：即刻用本機後備，並老實講清楚 */
+  /* 未接 Worker：用本機濾鏡近似，即刻有嘢睇 */
   if (!AI_ENDPOINT) {
-    applyAIFallback(style, '未接上 AI 服務，先用本機光線');
+    applyAIFallback(style, '未接 AI，先用本機' + style.name + '近似');
     return;
   }
 
   S.aiBusy = true;
-  showAIOverlay(true, '正在生成' + style.name);
+  showAIOverlay(true, '正在轉換成' + style.name);
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
 
   try {
-    const res = await fetch(AI_ENDPOINT, {
+    const res = await fetch(AI_ENDPOINT + '/style', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: aiInputDataURL(), style: style.id, prompt: style.prompt }),
+      body: JSON.stringify({ image: aiInputDataURL(1024), style: style.id }),
       signal: ac.signal
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
+
     const data = await res.json();
-    if (!data || typeof data.image !== 'string' || !data.image.startsWith('data:image'))
-      throw new Error('bad payload');
+    if (!data || !data.image) throw new Error('bad payload');
 
     const img = await loadImageSrc(data.image);
     S.ai = img;
     S.aiStyle = style.id;
     showAIOverlay(false);
     drawPreview();
-    toast('已加上「' + style.name + '」');
+    if (typeof data.credit === 'number') showCredit(data.credit);
+    toast(data.cached ? '已載回同款效果' : '已轉換成「' + style.name + '」', '✨');
   } catch (err) {
-    /* 超時、網絡、格式錯 —— 一律退回，唔彈錯誤俾訪客睇 */
     console.warn('[AI]', err && err.message);
     showAIOverlay(false);
-    applyAIFallback(style, 'AI 暫時未能連上，已用本機光線');
+    applyAIFallback(style, 'AI 未接得上，先用本機近似');
   } finally {
     clearTimeout(timer);
     S.aiBusy = false;
+    showAIOverlay(false);
   }
 }
 
-/* 無 AI 時：用該場景對應的本機濾鏡，成品照樣出得 */
+/* 無 AI 時：用該風格對應的本機濾鏡，成品照樣出得 */
+function refreshCredit() {
+  if (!AI_ENDPOINT) return;
+  fetch(AI_ENDPOINT + '/balance')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => { if (j && typeof j.credit === 'number') showCredit(j.credit); })
+    .catch(() => { /* 靜靜失敗，唔影響影相 */ });
+}
+
+/* 餘額只用一個小圓點加數字顯示，知的人自然知 */
+function showCredit(n) {
+  const wrap = $('credit');
+  const num = wrap && wrap.querySelector('.credit-num');
+  if (!num) return;
+  num.textContent = n.toFixed(2);
+  wrap.hidden = false;
+  wrap.title = '剩餘 credit ' + n.toFixed(2);
+}
+
+/* 無 AI 時：用該風格對應的本機濾鏡，成品照樣出得 */
 function applyAIFallback(style, msg) {
   S.ai = null;
   S.aiStyle = null;
@@ -409,12 +427,13 @@ function buildAIPanel() {
     });
     grid.appendChild(b);
   });
+  refreshCredit();
 
   const note = $('ai-note');
   if (note) {
     note.textContent = AI_ENDPOINT
-      ? '生成需時，失敗會自動改用本機光線。'
-      : '暫用本機光線模擬場景，效果即時。';
+      ? 'AI 會保留人物，只換畫風；約需十秒。'
+      : '未接 AI，沿用本機近似效果。';
   }
 }
 
@@ -434,32 +453,26 @@ function paintCard(g, W, H, opts = {}) {
   else { g.fillStyle = '#0d1f18'; g.fillRect(0, 0, W, H); }
   g.restore();
 
-  /* 1b. AI 場景：疊在相片上，人物保留，只換四周氣氛 */
+  /* 1b. AI 風格：轉換圖直接代替相片（模型已保留人物，唔需要再合成） */
   if (S.ai) {
     g.save();
-    /* 先柔化相片邊緣，令 AI 底圖自然貼住 */
-    g.globalCompositeOperation = 'screen';
-    g.globalAlpha = 0.55;
-    g.drawImage(S.ai, 0, 0, W, H);
-    g.restore();
-
-    /* 四周暗角，把人留下、把畫面收邊 */
-    g.save();
-    const vg = g.createRadialGradient(W / 2, H * 0.52, Math.min(W, H) * 0.28,
-                                      W / 2, H * 0.52, Math.max(W, H) * 0.72);
-    vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(10,22,17,0.46)');
-    g.fillStyle = vg;
-    g.fillRect(0, 0, W, H);
+    /* 轉換圖可能是 1:1 或 3:2，一律置中裁成卡面比例 */
+    const sr = S.ai.width / S.ai.height;
+    let sx = 0, sy = 0, sw = S.ai.width, sh = S.ai.height;
+    if (sr > CARD_AR) { sw = S.ai.height * CARD_AR; sx = (S.ai.width - sw) / 2; }
+    else { sh = S.ai.width / CARD_AR; sy = (S.ai.height - sh) / 2; }
+    g.drawImage(S.ai, sx, sy, sw, sh, 0, 0, W, H);
     g.restore();
   }
 
-  /* 2. 淡暖色罩（令相片同紙邊同一家族） */
-  g.save();
-  g.globalCompositeOperation = 'multiply';
-  g.fillStyle = 'rgba(251,246,236,0.10)';
-  g.fillRect(0, 0, W, H);
-  g.restore();
+  /* 2. 淡暖色罩（令相片同紙邊同一家族；AI 圖已經調好色就唔再加） */
+  if (!S.ai) {
+    g.save();
+    g.globalCompositeOperation = 'multiply';
+    g.fillStyle = 'rgba(251,246,236,0.10)';
+    g.fillRect(0, 0, W, H);
+    g.restore();
+  }
 
   /* 3. 相紙 */
   paintFrame(g, W, H);
