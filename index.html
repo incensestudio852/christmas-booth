@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#12261F">
+<title>伯利恆照相館 · 聖誕貼紙相機</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Noto+Serif+TC:wght@300;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<div class="bg-aurora" aria-hidden="true"></div>
+<div class="snow" id="snow" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M20 3 L23.4 16.6 L37 20 L23.4 23.4 L20 37 L16.6 23.4 L3 20 L16.6 16.6 Z" fill="#B98A3E"/>
+      <circle cx="20" cy="20" r="3.1" fill="#FBF6EC"/>
+    </svg>
+    <div class="brand-text">
+      <span class="brand-name">伯利恆照相館</span>
+      <span class="brand-sub">Bethlehem Photo Booth</span>
+    </div>
+  </div>
+  <span class="topbar-note" id="topbar-note">貼紙相機・4R 相片</span>
+</header>
+
+<main>
+  <!-- ══ STAGE 01 · 影相 ══ -->
+  <section class="stage stage--capture" id="stage-capture">
+    <div class="stage-head">
+      <p class="eyebrow">第一步</p>
+      <h1 class="display">影一張，<br>做成相紙。</h1>
+      <p class="lede">光亮一點，正面對鏡頭。三秒倒數，一張就夠。</p>
+    </div>
+
+    <div class="viewfinder-wrap">
+      <div class="viewfinder" id="viewfinder">
+        <video id="video" playsinline autoplay muted></video>
+
+        <div class="vf-idle" id="vf-idle">
+          <svg viewBox="0 0 48 48" class="vf-idle-icon" aria-hidden="true">
+            <circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="24" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+          <p class="vf-idle-title">按一下，開啟相機</p>
+          <p class="vf-idle-sub">iPad 要先允許相機權限</p>
+        </div>
+
+        <div class="vf-count" id="vf-count" hidden><span id="vf-count-num">3</span></div>
+        <div class="vf-flash" id="vf-flash" hidden></div>
+
+        <div class="vf-error" id="vf-error" hidden>
+          <p class="vf-error-title">相機未有開啟</p>
+          <p class="vf-error-sub" id="vf-error-sub">可以改用相片：iPad 相片 App 內選一張。</p>
+        </div>
+
+        <div class="vf-corner tl"></div><div class="vf-corner tr"></div>
+        <div class="vf-corner bl"></div><div class="vf-corner br"></div>
+      </div>
+    </div>
+
+    <div class="capture-actions">
+      <button class="btn btn--primary" id="btn-start" type="button">開啟相機</button>
+      <button class="btn btn--ghost" id="btn-countdown" type="button" hidden>三秒後影</button>
+      <label class="btn btn--ghost" id="btn-upload-label">
+        <span>用相片 App 內的相</span>
+        <input type="file" id="file-input" accept="image/*" hidden>
+      </label>
+    </div>
+  </section>
+
+
+  <!-- ══ STAGE 02 · 揀相紙 ══ -->
+  <section class="stage stage--paper" id="stage-paper" hidden>
+    <div class="stage-head">
+      <p class="eyebrow">第二步</p>
+      <h2 class="display display--sm">揀相紙同顏色。</h2>
+      <p class="lede">四張相紙，五種光線。揀完就落貼紙。</p>
+    </div>
+
+    <div class="paper-viewer">
+      <canvas id="preview" width="600" height="400"></canvas>
+    </div>
+
+    <h3 class="group-title">光線</h3>
+    <div class="chips" id="chips-filter"></div>
+
+    <h3 class="group-title">相紙</h3>
+    <div class="chips" id="chips-frame"></div>
+
+    <div class="stage-actions">
+      <button class="btn btn--ghost" id="btn-retake" type="button">重影</button>
+      <button class="btn btn--primary" id="btn-to-stickers" type="button">去貼貼紙</button>
+    </div>
+  </section>
+
+
+  <!-- ══ STAGE 03 · 貼紙 ══ -->
+  <section class="stage stage--stickers" id="stage-stickers" hidden>
+    <div class="stage-head stage-head--tight">
+      <p class="eyebrow">第三步</p>
+      <h2 class="display display--sm">貼上降生的記號。</h2>
+    </div>
+
+    <div class="edit-layout">
+      <div class="edit-canvas-wrap">
+        <div class="edit-canvas-box" id="canvas-box">
+          <canvas id="card" width="900" height="600"></canvas>
+        </div>
+        <p class="hint" id="edit-hint">點貼紙可以拖動，用兩指向外拉可以放大。</p>
+      </div>
+
+      <aside class="tray">
+        <div class="tray-group">
+          <h3 class="tray-title">降生記號</h3>
+          <div class="tray-grid" id="tray-scene"></div>
+        </div>
+        <div class="tray-group">
+          <h3 class="tray-title">天上</h3>
+          <div class="tray-grid" id="tray-heaven"></div>
+        </div>
+        <div class="tray-group">
+          <h3 class="tray-title">字句</h3>
+          <div class="tray-grid tray-grid--wide" id="tray-words"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="stage-actions">
+      <button class="btn btn--ghost" id="btn-back-paper" type="button">返回相紙</button>
+      <button class="btn btn--ghost" id="btn-clear" type="button">清空貼紙</button>
+      <button class="btn btn--primary" id="btn-done" type="button">完成・存相</button>
+    </div>
+  </section>
+
+
+  <!-- ══ STAGE 04 · 存相 ══ -->
+  <section class="stage stage--done" id="stage-done" hidden>
+    <div class="stage-head">
+      <p class="eyebrow">第四步</p>
+      <h2 class="display display--sm">相紙做好了。</h2>
+      <p class="lede">1600×1067，4R 沖印合適。</p>
+    </div>
+
+    <div class="done-layout">
+      <div class="done-preview"><div id="done-canvas-holder"></div></div>
+      <div class="done-actions">
+        <a class="btn btn--primary btn--tall" id="btn-save" download="bethlehem-4R.png">存到相片庫</a>
+        <p class="fine">iPad 會彈出分享選單，揀「儲存影像」。沖印時請相紙鋪選 4R，唔好自動裁切。</p>
+        <button class="btn btn--ghost" id="btn-share" type="button" hidden>分享相片</button>
+        <button class="btn btn--quiet" id="btn-again" type="button">再影一張</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p class="foot-verse">在至高之處榮耀歸與神，在地上平安歸與他所喜悅的人。</p>
+  <p class="foot-ref">路加福音 2:14</p>
+</footer>
+
+<div class="busy" id="busy" hidden><span class="busy-ring"></span><span id="busy-text">處理中</span></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="assets/symbols.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
